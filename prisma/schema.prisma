@@ -1,15 +1,114 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  phoneNumber   String    @unique
+  username      String?
+  profilePic    String?
+  status        String?
+  publicKey     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastSeen      DateTime  @default(now())
+  isOnline      Boolean   @default(false)
+  twoFactorAuth Boolean   @default(false)
+  twoFactorType String?   // "sms" or "email"
+  email         String?
+  otpData       OtpData?
+  sentMessages  Message[] @relation("SentMessages")
+  recvMessages  Message[] @relation("ReceivedMessages")
+  groups        Group[]   @relation(fields: [groupIds], references: [id])
+  groupIds      String[]  @db.ObjectId
+  adminGroups   Group[]   @relation("GroupAdmin")
+}
+
+model OtpData {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  senderId      String    @db.ObjectId
+  sender        User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId    String?   @db.ObjectId
+  receiver      User?     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: SetNull)
+  groupId       String?   @db.ObjectId
+  group         Group?    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  content       String
+  encryptedKey  String    // Encrypted symmetric key
+  mediaUrl      String?
+  mediaType     String?   // "image", "video", "audio", "document"
+  isRead        Boolean   @default(false)
+  isDelivered   Boolean   @default(false)
+  isAnonymous   Boolean   @default(false)
+  expiresAt     DateTime?
+  deleted       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  reactions     Reaction[]
+}
+
+model Reaction {
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  messageId String  @db.ObjectId
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String  @db.ObjectId
+  emoji     String  // Emoji code
+  createdAt DateTime @default(now())
+  
+  @@unique([messageId, userId])
+}
+
+model Group {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  name           String
+  description    String?
+  profilePic     String?
+  isPrivate      Boolean   @default(true)
+  adminId        String    @db.ObjectId
+  admin          User      @relation("GroupAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  members        User[]    @relation(fields: [memberIds], references: [id])
+  memberIds      String[]  @db.ObjectId
+  messages       Message[]
+  messageExpiry  Int?      // Message expiry time in seconds, null for no expiry
+  allowAnonymous Boolean   @default(false)
+  groupInvites   GroupInvite[]
+  memberNicknames MemberNickname[]
+}
+
+model GroupInvite {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  groupId    String   @db.ObjectId
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviteCode String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+}
+
+model MemberNickname {
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  userId   String @db.ObjectId
+  groupId  String @db.ObjectId
+  group    Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  nickname String
+  isVisible Boolean @default(true)
+  
+  @@unique([userId, groupId])
 }
